@@ -14,34 +14,48 @@ from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 
 class deepQAgent():
 
-    def __init__(self, env):
+    def __init__(self, env, preTrainedModel=None, numberOfTrainings=0):
         self.env = env
         self.esp = 0.99
         self.gamma = 0.99999
         self.alpha = 0.0003
         self.name = 'Deep  Q-learning'
         self.memorySize = 5000
-        self.count = 0
+        self.preTrained = True if preTrainedModel else False
+        self.count = numberOfTrainings
         self.batchSize = 64
+        self.esp_floor = 0.2
         # self.img_h, self.img_w, self.img_c = env.observation_space.shape
         self.input_shape = self.env.observation_space.shape
         # self.input_dims = self.memorySize * self.img_c
-        self.intializeMemory()
         self.Q = QNetwork(
             alpha=self.alpha, n_actions=env.action_space.n,
             input_shape=self.input_shape)
         self.Q = self.Q.to(self.Q.device)
+        if self.preTrained:
+            self.Q.load_state_dict(preTrainedModel)
+        self.intializeMemory()
 
     def intializeMemory(self):
-        self.stateMemory = torch.zeros((
-            self.memorySize, * self.input_shape))
-        self.nextStateMemory = torch.zeros((
-            self.memorySize, * self.input_shape))
-        self.rewardMemory = torch.zeros((
-            self.memorySize, 1))
-        self.terminalMemory = torch.zeros((self.memorySize, 1))
-        self.actionMemory = torch.zeros((
-            self.memorySize, 1))
+
+        if self.preTrained:
+            path = "preTrained/"
+            self.stateMemory = torch.load(path + "STATE_MEM.pt")
+            self.actionMemory = torch.load(path + "ACTION_MEM.pt")
+            self.rewardMemory = torch.load(path + "REWARD_MEM.pt")
+            self.nextStateMemory = torch.load(path + "STATE2_MEM.pt")
+            self.terminalMemory = torch.load(path + "DONE_MEM.pt")
+
+        else:
+            self.stateMemory = torch.zeros((
+                self.memorySize, * self.input_shape))
+            self.nextStateMemory = torch.zeros((
+                self.memorySize, * self.input_shape))
+            self.rewardMemory = torch.zeros((
+                self.memorySize, 1))
+            self.terminalMemory = torch.zeros((self.memorySize, 1))
+            self.actionMemory = torch.zeros((
+                self.memorySize, 1))
 
     def getMax(self, currentState):
         # picks best action so far
@@ -146,8 +160,10 @@ class deepQAgent():
             # env.render()
             # make next State this state
             currentState = nextState
-            if self.esp > esp_decline_num + sys.float_info.epsilon:
-                self.esp -= esp_decline_num
+
+            if self.esp > self.esp_floor:
+                if self.esp > esp_decline_num + sys.float_info.epsilon:
+                    self.esp -= esp_decline_num
 
     def simulation(self, agent, env, numEps=5000, testEps=20, divisor=50, esp_decline_num=.000004):
         total_rewards = np.ones(round(numEps/divisor))
@@ -184,7 +200,7 @@ class deepQAgent():
                 total_rewards[testCounter] = cumulativeReward / testEps
                 testCounter += 1
         env.close()
-        return total_rewards, agent.name
+        return total_rewards, agent.name, agent.count
 
 
 class QNetwork(nn.Module):
