@@ -21,10 +21,11 @@ class doubleQAgent():
         self.alpha = 0.00025
         self.name = 'Double Q-learning'
         self.memorySize = 20000
-        self.preTrained = True if preTrainedModel else False
+        self.preTrained = True if preTrainedModel_Q else False
         self.count = numberOfTrainings
         self.batchSize = 32
         self.esp_floor = 0.02
+        self.copy = 5000  # updates target weights every 5000 steps
         # self.img_h, self.img_w, self.img_c = env.observation_space.shape
         self.input_shape = self.env.observation_space.shape
         # self.input_dims = self.memorySize * self.img_c
@@ -35,7 +36,7 @@ class doubleQAgent():
         self.Target = QNetwork(alpha=self.alpha, n_actions=env.action_space.n,
                                input_shape=self.input_shape)
         self.Q = self.Q.to(self.Q.device)
-        self.optimzier = optim.Adam(self.Q.parameters(), lr=alpha)
+        self.optimzier = optim.Adam(self.Q.parameters(), lr=self.alpha)
         self.loss = nn.SmoothL1Loss()
         self.Target = self.Target.to(self.Target.device)
         if self.preTrained:
@@ -43,6 +44,10 @@ class doubleQAgent():
             self.Target.load_state_dict(preTrainedModel_T)
 
         self.intializeMemory(path)
+
+    def copy_model(self):
+        # Copy Q network weights into target
+        self.Target.load_state_dict(self.Q.state_dict())
 
     def intializeMemory(self, path=None):
 
@@ -112,6 +117,9 @@ class doubleQAgent():
     def learn(self):
         if self.count < self.batchSize:
             return
+
+        if self.count % self.copy == 0:
+            self.copy_model()
         self.optimzier.zero_grad()
         # sample a batch from the replay memoryory
 
@@ -127,8 +135,6 @@ class doubleQAgent():
         q = self.Q(currentStateReplay).gather(1, actionReplay.long())
 
         nextQ = self.Target(nextStateReplay).max(1).values.unsqueeze(1)
-
-        # target = rewardReplay + self.gamma * torch.max(nextQ, dim=1)[0]
 
         target = rewardReplay + \
             torch.mul((self.gamma * nextQ), 1 - terminalReplay)
